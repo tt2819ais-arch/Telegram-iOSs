@@ -2,7 +2,7 @@ workflows:
   telegram-mod:
     name: Telegram Mod with Deleted Messages
     environment:
-      xcode: 15.4
+      xcode: 16.0
       cocoapods: default
       vars:
         XCODE_PROJECT: "Telegram.xcodeproj"
