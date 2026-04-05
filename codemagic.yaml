@@ -2,7 +2,7 @@ workflows:
   telegram-mod:
     name: Telegram Mod with Deleted Messages
     environment:
-      xcode: 16.0
+      xcode: 15.2
       cocoapods: default
       vars:
         XCODE_PROJECT: "Telegram.xcodeproj"
@@ -15,15 +15,33 @@ workflows:
         - ~/Library/Caches/bazel
         - ~/Library/Caches/bazelisk
     scripts:
+      - name: Fix submodules
+        script: |
+          # Удаляем проблемные сабмодули
+          sed -i '' '/tgcalls/d' .gitmodules
+          sed -i '' '/rlottie/d' .gitmodules
+          rm -rf .git/modules/submodules/TgVoipWebrtc
+          rm -rf .git/modules/submodules/rlottie
+          rm -rf submodules/TgVoipWebrtc/tgcalls
+          rm -rf submodules/rlottie/rlottie
+          mkdir -p submodules/TgVoipWebrtc/tgcalls
+          mkdir -p submodules/rlottie/rlottie
+          touch submodules/TgVoipWebrtc/tgcalls/.gitkeep
+          touch submodules/rlottie/rlottie/.gitkeep
+          
       - name: Install Bazel
         script: |
           brew install bazelisk
+          
       - name: Setup project
         script: |
+          chmod +x build.sh
           ./build.sh setup
+          
       - name: Build IPA
         script: |
           ./build.sh build --configuration=release_dev --buildNumber=$BUILD_NUMBER --bundleId=$BUNDLE_ID
+          
       - name: Copy IPA
         script: |
           mkdir -p build/artifacts
@@ -31,10 +49,3 @@ workflows:
     artifacts:
       - build/artifacts/*.ipa
       - build/artifacts/*.xcarchive
-    publishing:
-      email:
-        recipients:
-          - your-email@example.com
-        notify:
-          success: true
-          failure: true
