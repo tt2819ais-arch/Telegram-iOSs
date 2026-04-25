@@ -1,0 +1,121 @@
+name: Enhanced Build (Simulator IPA)
+
+on:
+  push:
+    branches:
+      - "devin/**"
+      - "enhanced/**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-simulator:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+          fetch-depth: '0'
+
+      - name: Set active Xcode path
+        run: |
+          XCODE_VERSION=$(python3 -c 'import json,sys;print(json.load(open("versions.json"))["xcode"])')
+          if [ -d "/Applications/Xcode_${XCODE_VERSION}.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer
+          else
+            echo "Xcode ${XCODE_VERSION} not found, using whatever is selected."
+            xcode-select -p
+          fi
+
+      - name: Generate build configuration from secrets
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          set -e
+          if [ -z "${TELEGRAM_API_ID}" ] || [ -z "${TELEGRAM_API_HASH}" ]; then
+            echo "TELEGRAM_API_ID or TELEGRAM_API_HASH secret is not set."
+            echo "Add them at: Settings -> Secrets and variables -> Actions."
+            echo "You can obtain them from https://my.telegram.org/apps"
+            exit 1
+          fi
+          mkdir -p build-system/enhanced-config
+          cat > build-system/enhanced-config/configuration.json <<EOF
+          {
+              "bundle_id": "ph.telegra.Telegraph",
+              "api_id": "${TELEGRAM_API_ID}",
+              "api_hash": "${TELEGRAM_API_HASH}",
+              "team_id": "C67CF9S4VU",
+              "app_center_id": "0",
+              "is_internal_build": "true",
+              "is_appstore_build": "false",
+              "appstore_id": "0",
+              "app_specific_url_scheme": "tg",
+              "premium_iap_product_id": "org.telegram.telegramPremium.monthly",
+              "enable_siri": false,
+              "enable_icloud": false
+          }
+          EOF
+          echo "Configuration generated (api_id and api_hash injected from secrets)."
+
+      - name: Create canonical source directory
+        run: |
+          set -x
+          sudo mkdir -p /Users/Shared
+          sudo cp -R "$GITHUB_WORKSPACE" /Users/Shared/
+          sudo mv "/Users/Shared/$(basename "$GITHUB_WORKSPACE")" /Users/Shared/telegram-ios
+          sudo chown -R "$USER" /Users/Shared/telegram-ios
+
+      - name: Build the app for iOS simulator (unsigned)
+        run: |
+          set -x
+          SOURCE_DIR=/Users/Shared/telegram-ios
+          BAZEL_USER_ROOT="/private/var/tmp/_bazel_runner"
+          cd "$SOURCE_DIR"
+
+          BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
+          export APP_VERSION=$(python3 -c 'import json,sys;print(json.load(open("versions.json"))["app"])')
+          export COMMIT_COUNT=$(git rev-list --count HEAD)
+          export BUILD_NUMBER="$(($COMMIT_COUNT+$BUILD_NUMBER_OFFSET))"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+          echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
+
+          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+
+          python3 -u build-system/Make/Make.py \
+            --bazelUserRoot="$BAZEL_USER_ROOT" \
+            build \
+            --configurationPath="build-system/enhanced-config/configuration.json" \
+            --codesigningInformationPath=build-system/fake-codesigning \
+            --configuration=release_sim_arm64 \
+            --buildNumber="$BUILD_NUMBER"
+
+          OUTPUT_PATH="build/artifacts"
+          rm -rf "$OUTPUT_PATH"
+          mkdir -p "$OUTPUT_PATH"
+
+          IPA_FOUND=0
+          for f in bazel-out/applebin_ios-ios_sim_arm64-*-ST-*/bin/Telegram/Telegram.ipa bazel-bin/Telegram/Telegram.ipa; do
+            if [ -f "$f" ]; then
+              cp "$f" "$OUTPUT_PATH/Telegram-Simulator.ipa"
+              IPA_FOUND=1
+              break
+            fi
+          done
+          if [ "$IPA_FOUND" = "0" ]; then
+            echo "No IPA found in expected output paths. Listing bazel-out:"
+            find bazel-out -name "Telegram.ipa" || true
+            exit 1
+          fi
+          ls -la "$OUTPUT_PATH"
+
+      - name: Upload IPA artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Telegram-Simulator-IPA
+          path: /Users/Shared/telegram-ios/build/artifacts/Telegram-Simulator.ipa
+          if-no-files-found: warn
+          retention-days: 14
