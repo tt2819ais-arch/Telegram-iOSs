@@ -154,12 +154,9 @@ public final class EnhancedFeaturesArchive {
             do {
                 try FileManager.default.createDirectory(atPath: self.directoryPath, withIntermediateDirectories: true, attributes: nil)
                 let data = try JSONEncoder().encode(flags)
-                let tempPath = self.flagsPath + ".tmp"
-                try data.write(to: URL(fileURLWithPath: tempPath), options: .atomic)
-                if FileManager.default.fileExists(atPath: self.flagsPath) {
-                    try? FileManager.default.removeItem(atPath: self.flagsPath)
-                }
-                try FileManager.default.moveItem(atPath: tempPath, toPath: self.flagsPath)
+                // Data.write(options: .atomic) already writes to a system temp file and renames
+                // into place, so the destination is never absent during the swap.
+                try data.write(to: URL(fileURLWithPath: self.flagsPath), options: .atomic)
             } catch {
             }
         }
@@ -184,12 +181,9 @@ public final class EnhancedFeaturesArchive {
         do {
             try FileManager.default.createDirectory(atPath: self.directoryPath, withIntermediateDirectories: true, attributes: nil)
             let data = try JSONEncoder().encode(snapshot)
-            let tempPath = self.archivePath + ".tmp"
-            try data.write(to: URL(fileURLWithPath: tempPath), options: .atomic)
-            if FileManager.default.fileExists(atPath: self.archivePath) {
-                try? FileManager.default.removeItem(atPath: self.archivePath)
-            }
-            try FileManager.default.moveItem(atPath: tempPath, toPath: self.archivePath)
+            // Data.write(options: .atomic) already writes to a system temp file and renames
+            // into place, so the destination is never absent during the swap.
+            try data.write(to: URL(fileURLWithPath: self.archivePath), options: .atomic)
         } catch {
         }
     }
