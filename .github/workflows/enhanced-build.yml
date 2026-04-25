@@ -31,15 +31,28 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive --depth=1
 
-      - name: Set active Xcode path
+      - name: Select an Xcode that targets the user's iOS version
         run: |
-          XCODE_VERSION=$(python3 -c 'import json,sys;print(json.load(open("versions.json"))["xcode"])')
-          if [ -d "/Applications/Xcode_${XCODE_VERSION}.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer
+          set -e
+          # versions.json pins Xcode 26.x (iOS 26 SDK).  iPhones still on
+          # iOS 18.x cannot load binaries built with that SDK because their
+          # dyld rejects the new platform metadata with
+          # "wrong platform to load into process".  We instead pick the
+          # newest installed Xcode 16.x (iOS 18 SDK), which is forward
+          # compatible with iOS 18.x devices and still recent enough to
+          # build the project.  We later pass --overrideXcodeVersion so
+          # Make.py does not abort because of the version mismatch with
+          # versions.json.
+          CANDIDATE=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -z "$CANDIDATE" ]; then
+            echo "No Xcode 16.x found on the runner, listing installed Xcodes:"
+            ls -d /Applications/Xcode_*.app 2>/dev/null || true
+            echo "Falling back to default selected Xcode (build may produce an iOS 26 binary)."
           else
-            echo "Xcode ${XCODE_VERSION} not found, using whatever is selected."
-            xcode-select -p
+            echo "Selecting $CANDIDATE"
+            sudo xcode-select -s "$CANDIDATE/Contents/Developer"
           fi
+          xcodebuild -version
 
       - name: Generate build configuration from secrets
         env:
@@ -56,7 +69,7 @@ jobs:
           mkdir -p build-system/enhanced-config
           cat > build-system/enhanced-config/configuration.json <<EOF
           {
-              "bundle_id": "ph.telegra.Telegraph",
+              "bundle_id": "app.tt2819ais.enhanced",
               "api_id": "${TELEGRAM_API_ID}",
               "api_hash": "${TELEGRAM_API_HASH}",
               "team_id": "C67CF9S4VU",
@@ -71,6 +84,29 @@ jobs:
           }
           EOF
           echo "Configuration generated (api_id and api_hash injected from secrets)."
+
+      - name: Regenerate fake provisioning profiles for the new bundle id
+        run: |
+          set -e
+          # The pre-built fake-codesigning profiles are baked for
+          # ph.telegra.Telegraph.  When we change bundle_id Bazel
+          # (via copy_profiles_from_directory in BuildConfiguration.py)
+          # silently skips every profile because their
+          # application-identifier no longer matches our team_id+bundle_id.
+          # Rewrite each profile in-place to use our new bundle id.
+          python3 build-system/Make/RewriteFakeProfiles.py \
+            --source build-system/fake-codesigning/profiles \
+            --output build-system/fake-codesigning/profiles-new \
+            --p12 build-system/fake-codesigning/certs/SelfSigned.p12 \
+            --new-bundle-id app.tt2819ais.enhanced
+          rm -rf build-system/fake-codesigning/profiles
+          mv build-system/fake-codesigning/profiles-new build-system/fake-codesigning/profiles
+          echo "--- Rewritten profile entitlements: ---"
+          for f in build-system/fake-codesigning/profiles/*.mobileprovision; do
+            echo "$f:"
+            openssl smime -inform der -verify -noverify -in "$f" 2>/dev/null \
+              | python3 -c 'import plistlib,sys;p=plistlib.loads(sys.stdin.buffer.read());print("  application-identifier:", p["Entitlements"]["application-identifier"])'
+          done
 
       - name: Create canonical source directory
         run: |
@@ -98,6 +134,7 @@ jobs:
 
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot="$BAZEL_USER_ROOT" \
+            --overrideXcodeVersion \
             build \
             --configurationPath="build-system/enhanced-config/configuration.json" \
             --codesigningInformationPath=build-system/fake-codesigning \
