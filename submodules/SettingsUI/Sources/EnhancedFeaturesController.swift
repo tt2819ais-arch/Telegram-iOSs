@@ -288,12 +288,12 @@ public func enhancedFeaturesController(context: AccountContext) -> ViewControlle
         )
         return (controllerState, (listState, arguments))
     }
+    |> afterDisposed {
+        flagsSyncDisposable.dispose()
+    }
 
     let controller = ItemListController(context: context, state: signal)
     controller.navigationPresentation = .modal
-    controller.didDisappear = { _ in
-        flagsSyncDisposable.dispose()
-    }
 
     pushControllerImpl = { [weak controller] c in
         (controller?.navigationController as? NavigationController)?.pushViewController(c)
