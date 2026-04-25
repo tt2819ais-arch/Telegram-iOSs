@@ -32,7 +32,26 @@ import tempfile
 
 
 def _run(args, **kwargs):
-    return subprocess.run(args, check=True, **kwargs)
+    """Run ``args`` and surface the captured stderr if it fails.
+
+    The default ``subprocess.run(check=True)`` raises
+    ``CalledProcessError`` with no body, which makes CI logs unhelpful.
+    """
+    proc = subprocess.run(args, capture_output=True, **kwargs)
+    if proc.returncode != 0:
+        sys.stderr.write('Command failed: {}\n'.format(' '.join(args)))
+        if proc.stdout:
+            sys.stderr.write('stdout: {}\n'.format(proc.stdout.decode('utf-8', 'replace')))
+        if proc.stderr:
+            sys.stderr.write('stderr: {}\n'.format(proc.stderr.decode('utf-8', 'replace')))
+        raise subprocess.CalledProcessError(proc.returncode, args, proc.stdout, proc.stderr)
+    return proc
+
+
+def _try_run(args):
+    """Like ``_run`` but returns False instead of raising on failure."""
+    proc = subprocess.run(args, capture_output=True)
+    return proc.returncode == 0
 
 
 def _rewrite_string(value: str, original_bundle_id: str, new_bundle_id: str) -> str:
@@ -77,25 +96,26 @@ def _extract_p12(p12_path: str, work_dir: str) -> tuple:
 
     The bundled ``SelfSigned.p12`` uses an empty passphrase (this matches
     how ``ImportCertificates.py`` imports it).
+
+    OpenSSL 3.x needs ``-legacy`` for older p12 encryption (RC2-40), but
+    the LibreSSL build shipped in ``/usr/bin/openssl`` on macOS does not
+    accept ``-legacy``.  We probe for support first.
     """
     cert_path = os.path.join(work_dir, 'cert.pem')
     key_path = os.path.join(work_dir, 'key.pem')
-    _run([
-        'openssl', 'pkcs12',
-        '-in', p12_path,
-        '-out', cert_path,
-        '-clcerts', '-nokeys',
-        '-legacy',
-        '-passin', 'pass:',
-    ])
-    _run([
-        'openssl', 'pkcs12',
-        '-in', p12_path,
-        '-out', key_path,
-        '-nocerts', '-nodes',
-        '-legacy',
-        '-passin', 'pass:',
-    ])
+
+    base_cert = ['openssl', 'pkcs12', '-in', p12_path, '-out', cert_path,
+                 '-clcerts', '-nokeys', '-passin', 'pass:']
+    base_key = ['openssl', 'pkcs12', '-in', p12_path, '-out', key_path,
+                '-nocerts', '-nodes', '-passin', 'pass:']
+
+    # Try without -legacy first (LibreSSL on macOS, or modern p12s).
+    if _try_run(base_cert) and _try_run(base_key):
+        return cert_path, key_path
+
+    # Fall back to -legacy (OpenSSL 3.x with old RC2-40 p12).
+    _run(base_cert + ['-legacy'])
+    _run(base_key + ['-legacy'])
     return cert_path, key_path
 
 
