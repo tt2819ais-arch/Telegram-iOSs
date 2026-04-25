@@ -37,7 +37,10 @@ private struct DeletedArchiveEntry: ItemListNodeEntry {
     }
 
     static func <(lhs: DeletedArchiveEntry, rhs: DeletedArchiveEntry) -> Bool {
-        return lhs.entry.archivedTimestamp > rhs.entry.archivedTimestamp
+        if lhs.entry.archivedTimestamp != rhs.entry.archivedTimestamp {
+            return lhs.entry.archivedTimestamp > rhs.entry.archivedTimestamp
+        }
+        return lhs.index < rhs.index
     }
 
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
@@ -68,7 +71,10 @@ private struct EditArchiveEntry: ItemListNodeEntry {
     }
 
     static func <(lhs: EditArchiveEntry, rhs: EditArchiveEntry) -> Bool {
-        return lhs.entry.archivedTimestamp > rhs.entry.archivedTimestamp
+        if lhs.entry.archivedTimestamp != rhs.entry.archivedTimestamp {
+            return lhs.entry.archivedTimestamp > rhs.entry.archivedTimestamp
+        }
+        return lhs.index < rhs.index
     }
 
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
