@@ -1,0 +1,170 @@
+name: Enhanced Build (Device IPA)
+
+on:
+  push:
+    branches:
+      - "devin/**"
+      - "enhanced/**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-device:
+    runs-on: macos-15
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout (without submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: '0'
+
+      - name: Initialize submodules with rewritten URLs
+        run: |
+          set -e
+          # The fork's .gitmodules uses relative URLs (../tgcalls.git, ../rlottie.git)
+          # which resolve to tt2819ais-arch/tgcalls and tt2819ais-arch/rlottie
+          # (which don't exist). Rewrite those to point to TelegramMessenger/ instead.
+          git config -f .gitmodules submodule."submodules/TgVoipWebrtc/tgcalls".url https://github.com/TelegramMessenger/tgcalls.git
+          git config -f .gitmodules submodule."submodules/rlottie/rlottie".url https://github.com/TelegramMessenger/rlottie.git
+          git submodule sync --recursive
+          git submodule update --init --recursive --depth=1
+
+      - name: Select an Xcode that targets the user's iOS version
+        run: |
+          set -e
+          # versions.json pins Xcode 26.x (iOS 26 SDK).  iPhones still on
+          # iOS 18.x cannot load binaries built with that SDK because their
+          # dyld rejects the new platform metadata with
+          # "wrong platform to load into process".  We instead pick the
+          # newest installed Xcode 16.x (iOS 18 SDK), which is forward
+          # compatible with iOS 18.x devices and still recent enough to
+          # build the project.  We later pass --overrideXcodeVersion so
+          # Make.py does not abort because of the version mismatch with
+          # versions.json.
+          CANDIDATE=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -z "$CANDIDATE" ]; then
+            echo "No Xcode 16.x found on the runner, listing installed Xcodes:"
+            ls -d /Applications/Xcode_*.app 2>/dev/null || true
+            echo "Falling back to default selected Xcode (build may produce an iOS 26 binary)."
+          else
+            echo "Selecting $CANDIDATE"
+            sudo xcode-select -s "$CANDIDATE/Contents/Developer"
+          fi
+          xcodebuild -version
+
+      - name: Generate build configuration from secrets
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          set -e
+          if [ -z "${TELEGRAM_API_ID}" ] || [ -z "${TELEGRAM_API_HASH}" ]; then
+            echo "TELEGRAM_API_ID or TELEGRAM_API_HASH secret is not set."
+            echo "Add them at: Settings -> Secrets and variables -> Actions."
+            echo "You can obtain them from https://my.telegram.org/apps"
+            exit 1
+          fi
+          mkdir -p build-system/enhanced-config
+          cat > build-system/enhanced-config/configuration.json <<EOF
+          {
+              "bundle_id": "app.tt2819ais.enhanced",
+              "api_id": "${TELEGRAM_API_ID}",
+              "api_hash": "${TELEGRAM_API_HASH}",
+              "team_id": "C67CF9S4VU",
+              "app_center_id": "0",
+              "is_internal_build": "true",
+              "is_appstore_build": "false",
+              "appstore_id": "0",
+              "app_specific_url_scheme": "tg",
+              "premium_iap_product_id": "org.telegram.telegramPremium.monthly",
+              "enable_siri": false,
+              "enable_icloud": false
+          }
+          EOF
+          echo "Configuration generated (api_id and api_hash injected from secrets)."
+
+      - name: Regenerate fake provisioning profiles for the new bundle id
+        run: |
+          set -e
+          # The pre-built fake-codesigning profiles are baked for
+          # ph.telegra.Telegraph.  When we change bundle_id Bazel
+          # (via copy_profiles_from_directory in BuildConfiguration.py)
+          # silently skips every profile because their
+          # application-identifier no longer matches our team_id+bundle_id.
+          # Rewrite each profile in-place to use our new bundle id.
+          python3 build-system/Make/RewriteFakeProfiles.py \
+            --source build-system/fake-codesigning/profiles \
+            --output build-system/fake-codesigning/profiles-new \
+            --p12 build-system/fake-codesigning/certs/SelfSigned.p12 \
+            --new-bundle-id app.tt2819ais.enhanced
+          rm -rf build-system/fake-codesigning/profiles
+          mv build-system/fake-codesigning/profiles-new build-system/fake-codesigning/profiles
+          echo "--- Rewritten profile entitlements: ---"
+          for f in build-system/fake-codesigning/profiles/*.mobileprovision; do
+            echo "$f:"
+            openssl smime -inform der -verify -noverify -in "$f" 2>/dev/null \
+              | python3 -c 'import plistlib,sys;p=plistlib.loads(sys.stdin.buffer.read());print("  application-identifier:", p["Entitlements"]["application-identifier"])'
+          done
+
+      - name: Create canonical source directory
+        run: |
+          set -x
+          sudo mkdir -p /Users/Shared
+          sudo cp -R "$GITHUB_WORKSPACE" /Users/Shared/
+          sudo mv "/Users/Shared/$(basename "$GITHUB_WORKSPACE")" /Users/Shared/telegram-ios
+          sudo chown -R "$USER" /Users/Shared/telegram-ios
+
+      - name: Build the app for iOS device (fake-signed, arm64)
+        run: |
+          set -x
+          SOURCE_DIR=/Users/Shared/telegram-ios
+          BAZEL_USER_ROOT="/private/var/tmp/_bazel_runner"
+          cd "$SOURCE_DIR"
+
+          BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
+          export APP_VERSION=$(python3 -c 'import json,sys;print(json.load(open("versions.json"))["app"])')
+          export COMMIT_COUNT=$(git rev-list --count HEAD)
+          export BUILD_NUMBER="$(($COMMIT_COUNT+$BUILD_NUMBER_OFFSET))"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+          echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
+
+          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+
+          python3 -u build-system/Make/Make.py \
+            --bazelUserRoot="$BAZEL_USER_ROOT" \
+            --overrideXcodeVersion \
+            build \
+            --configurationPath="build-system/enhanced-config/configuration.json" \
+            --codesigningInformationPath=build-system/fake-codesigning \
+            --configuration=release_arm64 \
+            --buildNumber="$BUILD_NUMBER"
+
+          OUTPUT_PATH="build/artifacts"
+          rm -rf "$OUTPUT_PATH"
+          mkdir -p "$OUTPUT_PATH"
+
+          IPA_FOUND=0
+          for f in bazel-out/applebin_ios-ios_arm64-*-ST-*/bin/Telegram/Telegram.ipa bazel-bin/Telegram/Telegram.ipa; do
+            if [ -f "$f" ]; then
+              cp "$f" "$OUTPUT_PATH/Telegram-Device.ipa"
+              IPA_FOUND=1
+              break
+            fi
+          done
+          if [ "$IPA_FOUND" = "0" ]; then
+            echo "No IPA found in expected output paths. Listing bazel-out:"
+            find bazel-out -name "Telegram.ipa" || true
+            exit 1
+          fi
+          ls -la "$OUTPUT_PATH"
+
+      - name: Upload IPA artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Telegram-Device-IPA
+          path: /Users/Shared/telegram-ios/build/artifacts/Telegram-Device.ipa
+          if-no-files-found: warn
+          retention-days: 14
