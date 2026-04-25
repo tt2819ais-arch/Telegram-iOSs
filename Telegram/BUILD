@@ -1744,13 +1744,17 @@ ios_application(
         ":RequiredDeviceCapabilitiesPlist",
         ":UrlTypesInfoPlist",
     ],
-    app_icons = [ ":{}_icon".format(name) for name in composer_icon_folders ],
+    # Note: upstream Telegram switched to Icon Composer .icon bundles
+    # (Xcode 26+).  This fork builds with Xcode 16 (iOS 18 SDK) for
+    # compatibility with iOS 18.x devices, so we restore the pre-2025
+    # layout: no app_icons, and the legacy DefaultAppIcon.xcassets is
+    # bundled via resources.
     alternate_icons = [
         ":{}".format(name) for name in alternate_icon_folders
     ],
     resources = [
         ":LaunchScreen",
-        #":DefaultAppIcon",
+        ":DefaultAppIcon",
     ],
     frameworks = [
         ":MtProtoKitFramework",
