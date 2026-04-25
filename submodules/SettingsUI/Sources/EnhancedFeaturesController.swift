@@ -29,6 +29,7 @@ private final class EnhancedFeaturesControllerArguments {
     }
 }
 
+/// Enumeration of every Enhanced Features switch reachable from the settings UI.
 public enum EnhancedFeatureToggle {
     case saveDeletedMessages
     case saveEditedMessages
@@ -204,6 +205,9 @@ private func enhancedFeaturesControllerEntries(settings: EnhancedFeaturesSetting
     return entries
 }
 
+/// Builds the top-level Enhanced Features settings screen, including toggles
+/// for delete/edit archiving and the advanced privacy options, plus disclosure
+/// rows that drill into the deleted-message and edit-history viewers.
 public func enhancedFeaturesController(context: AccountContext) -> ViewController {
     let archive = EnhancedFeaturesArchive.shared(basePath: context.account.postbox.mediaBox.basePath)
 

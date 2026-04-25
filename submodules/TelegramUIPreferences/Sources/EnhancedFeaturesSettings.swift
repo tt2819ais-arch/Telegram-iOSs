@@ -3,6 +3,8 @@ import SwiftSignalKit
 import TelegramCore
 import Postbox
 
+/// User-facing toggles for the Enhanced Features privacy / power-user subsystem.
+/// Stored in shared data under `ApplicationSpecificSharedDataKeys.enhancedFeaturesSettings`.
 public struct EnhancedFeaturesSettings: Equatable, Codable {
     public var saveDeletedMessages: Bool
     public var saveEditedMessages: Bool
@@ -65,6 +67,8 @@ public struct EnhancedFeaturesSettings: Equatable, Codable {
     }
 }
 
+/// Atomically mutate the persisted `EnhancedFeaturesSettings` value via the
+/// account manager's shared-data transaction.
 public func updateEnhancedFeaturesSettingsInteractively(accountManager: AccountManager<TelegramAccountManagerTypes>, _ f: @escaping (EnhancedFeaturesSettings) -> EnhancedFeaturesSettings) -> Signal<Void, NoError> {
     return accountManager.transaction { transaction -> Void in
         transaction.updateSharedData(ApplicationSpecificSharedDataKeys.enhancedFeaturesSettings, { entry in

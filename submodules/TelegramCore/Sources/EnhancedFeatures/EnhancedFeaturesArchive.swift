@@ -2,6 +2,7 @@ import Foundation
 import Postbox
 import SwiftSignalKit
 
+/// A snapshot of a single message captured immediately before it was deleted on the server.
 public struct ArchivedDeletedMessage: Codable, Equatable {
     public let peerId: Int64
     public let namespace: Int32
@@ -26,6 +27,7 @@ public struct ArchivedDeletedMessage: Codable, Equatable {
     }
 }
 
+/// A record of one message edit, capturing both the previous and the new text.
 public struct ArchivedMessageEdit: Codable, Equatable {
     public let peerId: Int64
     public let namespace: Int32
@@ -46,6 +48,7 @@ public struct ArchivedMessageEdit: Codable, Equatable {
     }
 }
 
+/// On-disk representation of all archived deleted messages and edits for one account.
 public struct EnhancedFeaturesArchiveSnapshot: Codable, Equatable {
     public var deletedMessages: [ArchivedDeletedMessage]
     public var editedMessages: [ArchivedMessageEdit]
@@ -60,6 +63,11 @@ public struct EnhancedFeaturesArchiveSnapshot: Codable, Equatable {
     }
 }
 
+/// Runtime flags read by the archiving hooks. Mirrors the user-facing toggles
+/// in `EnhancedFeaturesSettings`. Persisted to a small sidecar file inside
+/// `<basePath>/enhanced_features/runtime_flags_v1.json` so the hooks (which run
+/// inside `TelegramCore` and cannot import `TelegramUIPreferences`) can honor
+/// them without a module dependency.
 public struct EnhancedFeaturesRuntimeFlags: Codable, Equatable {
     public var saveDeletedMessages: Bool
     public var saveEditedMessages: Bool
@@ -74,6 +82,9 @@ public struct EnhancedFeaturesRuntimeFlags: Codable, Equatable {
     }
 }
 
+/// Thread-safe archive of deleted/edited messages, persisted as JSON next to
+/// the account's media box. Use `shared(basePath:)` to obtain the per-account
+/// instance; the same `basePath` always returns the same instance.
 public final class EnhancedFeaturesArchive {
     private static let registryQueue = DispatchQueue(label: "EnhancedFeaturesArchive.registry")
     private static var registry: [String: EnhancedFeaturesArchive] = [:]
@@ -107,6 +118,9 @@ public final class EnhancedFeaturesArchive {
         self.flagsPath = self.directoryPath + "/runtime_flags_v1.json"
     }
 
+    /// Current runtime flags (saveDeletedMessages / saveEditedMessages).
+    /// Lazily loads from disk on first access and caches the value.
+    /// Safe to call from any thread; readers and writers use a single NSLock.
     public var currentFlags: EnhancedFeaturesRuntimeFlags {
         self.flagsLock.lock()
         if let cached = self.cachedFlags {
@@ -122,6 +136,11 @@ public final class EnhancedFeaturesArchive {
             loaded = .default
         }
         self.flagsLock.lock()
+        if let cached = self.cachedFlags {
+            // A concurrent updateFlags() ran in the meantime; keep its value.
+            self.flagsLock.unlock()
+            return cached
+        }
         self.cachedFlags = loaded
         self.flagsLock.unlock()
         return loaded
@@ -231,6 +250,10 @@ public final class EnhancedFeaturesArchive {
     }
 }
 
+/// Archive the messages identified by `ids` before they are wiped from the
+/// postbox. Looks up each message via the supplied transaction and skips any
+/// that cannot be resolved (already gone, secret chat, etc.). Becomes a no-op
+/// when the user has disabled `saveDeletedMessages`.
 public func archiveDeletedMessagesIfNeeded(transaction: Transaction, mediaBox: MediaBox, ids: [MessageId]) {
     if ids.isEmpty {
         return
@@ -268,6 +291,10 @@ public func archiveDeletedMessagesIfNeeded(transaction: Transaction, mediaBox: M
     }
 }
 
+/// Archive the previous version of `id` before its text is overwritten by
+/// `newMessage`. The edit timestamp is read from the new message's
+/// `EditedMessageAttribute` if present. Becomes a no-op when the user has
+/// disabled `saveEditedMessages` or when the text has not actually changed.
 public func archiveMessageEditIfNeeded(transaction: Transaction, mediaBox: MediaBox, id: MessageId, newMessage: StoreMessage) {
     let archive = EnhancedFeaturesArchive.shared(basePath: mediaBox.basePath)
     if !archive.currentFlags.saveEditedMessages {

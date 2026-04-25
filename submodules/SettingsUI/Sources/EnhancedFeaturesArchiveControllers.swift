@@ -90,6 +90,8 @@ private func formatArchiveSubtitle(authorName: String?, peerId: Int64, timestamp
     return dateString
 }
 
+/// Builds the screen that lists every locally-archived deleted message,
+/// most recent first, including author and timestamp metadata.
 public func deletedMessagesArchiveController(context: AccountContext) -> ViewController {
     let archive = EnhancedFeaturesArchive.shared(basePath: context.account.postbox.mediaBox.basePath)
     let snapshotPromise = Promise<EnhancedFeaturesArchiveSnapshot>()
@@ -138,6 +140,8 @@ public func deletedMessagesArchiveController(context: AccountContext) -> ViewCon
     return controller
 }
 
+/// Builds the screen that lists every captured message edit, showing both the
+/// previous and the new text. Most recent first.
 public func editedMessagesHistoryController(context: AccountContext) -> ViewController {
     let archive = EnhancedFeaturesArchive.shared(basePath: context.account.postbox.mediaBox.basePath)
     let snapshotPromise = Promise<EnhancedFeaturesArchiveSnapshot>()
