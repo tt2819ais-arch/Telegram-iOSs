@@ -1,4 +1,4 @@
-name: Enhanced Build (Simulator IPA)
+name: Enhanced Build (Device IPA)
 
 on:
   push:
@@ -9,8 +9,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-simulator:
+  build-device:
     runs-on: macos-15
+    timeout-minutes: 240
 
     steps:
       - name: Checkout (without submodules)
@@ -79,7 +80,7 @@ jobs:
           sudo mv "/Users/Shared/$(basename "$GITHUB_WORKSPACE")" /Users/Shared/telegram-ios
           sudo chown -R "$USER" /Users/Shared/telegram-ios
 
-      - name: Build the app for iOS simulator (unsigned)
+      - name: Build the app for iOS device (fake-signed, arm64)
         run: |
           set -x
           SOURCE_DIR=/Users/Shared/telegram-ios
@@ -100,7 +101,7 @@ jobs:
             build \
             --configurationPath="build-system/enhanced-config/configuration.json" \
             --codesigningInformationPath=build-system/fake-codesigning \
-            --configuration=release_sim_arm64 \
+            --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
           OUTPUT_PATH="build/artifacts"
@@ -108,9 +109,9 @@ jobs:
           mkdir -p "$OUTPUT_PATH"
 
           IPA_FOUND=0
-          for f in bazel-out/applebin_ios-ios_sim_arm64-*-ST-*/bin/Telegram/Telegram.ipa bazel-bin/Telegram/Telegram.ipa; do
+          for f in bazel-out/applebin_ios-ios_arm64-*-ST-*/bin/Telegram/Telegram.ipa bazel-bin/Telegram/Telegram.ipa; do
             if [ -f "$f" ]; then
-              cp "$f" "$OUTPUT_PATH/Telegram-Simulator.ipa"
+              cp "$f" "$OUTPUT_PATH/Telegram-Device.ipa"
               IPA_FOUND=1
               break
             fi
@@ -126,7 +127,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Telegram-Simulator-IPA
-          path: /Users/Shared/telegram-ios/build/artifacts/Telegram-Simulator.ipa
+          name: Telegram-Device-IPA
+          path: /Users/Shared/telegram-ios/build/artifacts/Telegram-Device.ipa
           if-no-files-found: warn
           retention-days: 14
