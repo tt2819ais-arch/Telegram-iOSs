@@ -207,10 +207,20 @@ private func enhancedFeaturesControllerEntries(settings: EnhancedFeaturesSetting
 public func enhancedFeaturesController(context: AccountContext) -> ViewController {
     let archive = EnhancedFeaturesArchive.shared(basePath: context.account.postbox.mediaBox.basePath)
 
-    let settingsPromise = Promise<EnhancedFeaturesSettings>()
-    settingsPromise.set(context.sharedContext.accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.enhancedFeaturesSettings])
+    let settingsSignal: Signal<EnhancedFeaturesSettings, NoError> = context.sharedContext.accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.enhancedFeaturesSettings])
     |> map { sharedData -> EnhancedFeaturesSettings in
         return sharedData.entries[ApplicationSpecificSharedDataKeys.enhancedFeaturesSettings]?.get(EnhancedFeaturesSettings.self) ?? EnhancedFeaturesSettings.default
+    }
+
+    let settingsPromise = Promise<EnhancedFeaturesSettings>()
+    settingsPromise.set(settingsSignal)
+
+    let flagsSyncDisposable = (settingsSignal
+    |> deliverOnMainQueue).startStrict(next: { settings in
+        archive.updateFlags(EnhancedFeaturesRuntimeFlags(
+            saveDeletedMessages: settings.saveDeletedMessages,
+            saveEditedMessages: settings.saveEditedMessages
+        ))
     })
 
     let snapshotPromise = Promise<EnhancedFeaturesArchiveSnapshot>()
@@ -277,6 +287,9 @@ public func enhancedFeaturesController(context: AccountContext) -> ViewControlle
 
     let controller = ItemListController(context: context, state: signal)
     controller.navigationPresentation = .modal
+    controller.didDisappear = { _ in
+        flagsSyncDisposable.dispose()
+    }
 
     pushControllerImpl = { [weak controller] c in
         (controller?.navigationController as? NavigationController)?.pushViewController(c)

@@ -60,6 +60,20 @@ public struct EnhancedFeaturesArchiveSnapshot: Codable, Equatable {
     }
 }
 
+public struct EnhancedFeaturesRuntimeFlags: Codable, Equatable {
+    public var saveDeletedMessages: Bool
+    public var saveEditedMessages: Bool
+
+    public static var `default`: EnhancedFeaturesRuntimeFlags {
+        return EnhancedFeaturesRuntimeFlags(saveDeletedMessages: true, saveEditedMessages: true)
+    }
+
+    public init(saveDeletedMessages: Bool, saveEditedMessages: Bool) {
+        self.saveDeletedMessages = saveDeletedMessages
+        self.saveEditedMessages = saveEditedMessages
+    }
+}
+
 public final class EnhancedFeaturesArchive {
     private static let registryQueue = DispatchQueue(label: "EnhancedFeaturesArchive.registry")
     private static var registry: [String: EnhancedFeaturesArchive] = [:]
@@ -81,12 +95,55 @@ public final class EnhancedFeaturesArchive {
     private let queue: DispatchQueue
     private let directoryPath: String
     private let archivePath: String
+    private let flagsPath: String
     private var loadedSnapshot: EnhancedFeaturesArchiveSnapshot?
+    private let flagsLock = NSLock()
+    private var cachedFlags: EnhancedFeaturesRuntimeFlags?
 
     private init(basePath: String) {
         self.queue = DispatchQueue(label: "EnhancedFeaturesArchive.\(basePath)")
         self.directoryPath = basePath + "/enhanced_features"
         self.archivePath = self.directoryPath + "/archive_v1.json"
+        self.flagsPath = self.directoryPath + "/runtime_flags_v1.json"
+    }
+
+    public var currentFlags: EnhancedFeaturesRuntimeFlags {
+        self.flagsLock.lock()
+        if let cached = self.cachedFlags {
+            self.flagsLock.unlock()
+            return cached
+        }
+        self.flagsLock.unlock()
+        let loaded: EnhancedFeaturesRuntimeFlags
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: self.flagsPath)),
+           let decoded = try? JSONDecoder().decode(EnhancedFeaturesRuntimeFlags.self, from: data) {
+            loaded = decoded
+        } else {
+            loaded = .default
+        }
+        self.flagsLock.lock()
+        self.cachedFlags = loaded
+        self.flagsLock.unlock()
+        return loaded
+    }
+
+    public func updateFlags(_ flags: EnhancedFeaturesRuntimeFlags) {
+        self.flagsLock.lock()
+        self.cachedFlags = flags
+        self.flagsLock.unlock()
+        self.queue.async {
+            do {
+                try FileManager.default.createDirectory(atPath: self.directoryPath, withIntermediateDirectories: true, attributes: nil)
+                let data = try JSONEncoder().encode(flags)
+                let tempPath = self.flagsPath + ".tmp"
+                try data.write(to: URL(fileURLWithPath: tempPath), options: .atomic)
+                if FileManager.default.fileExists(atPath: self.flagsPath) {
+                    try? FileManager.default.removeItem(atPath: self.flagsPath)
+                }
+                try FileManager.default.moveItem(atPath: tempPath, toPath: self.flagsPath)
+            } catch {
+            }
+        }
     }
 
     private func loadLocked() -> EnhancedFeaturesArchiveSnapshot {
@@ -178,6 +235,10 @@ public func archiveDeletedMessagesIfNeeded(transaction: Transaction, mediaBox: M
     if ids.isEmpty {
         return
     }
+    let archive = EnhancedFeaturesArchive.shared(basePath: mediaBox.basePath)
+    if !archive.currentFlags.saveDeletedMessages {
+        return
+    }
     var entries: [ArchivedDeletedMessage] = []
     let now = Int32(Date().timeIntervalSince1970)
     for id in ids {
@@ -203,11 +264,15 @@ public func archiveDeletedMessagesIfNeeded(transaction: Transaction, mediaBox: M
         entries.append(entry)
     }
     if !entries.isEmpty {
-        EnhancedFeaturesArchive.shared(basePath: mediaBox.basePath).appendDeletedMessages(entries)
+        archive.appendDeletedMessages(entries)
     }
 }
 
 public func archiveMessageEditIfNeeded(transaction: Transaction, mediaBox: MediaBox, id: MessageId, newMessage: StoreMessage) {
+    let archive = EnhancedFeaturesArchive.shared(basePath: mediaBox.basePath)
+    if !archive.currentFlags.saveEditedMessages {
+        return
+    }
     guard let previousMessage = transaction.getMessage(id) else {
         return
     }
@@ -216,16 +281,22 @@ public func archiveMessageEditIfNeeded(transaction: Transaction, mediaBox: Media
         return
     }
     let now = Int32(Date().timeIntervalSince1970)
+    let editTimestamp: Int32
+    if let editAttribute = newMessage.attributes.compactMap({ $0 as? EditedMessageAttribute }).first {
+        editTimestamp = editAttribute.date
+    } else {
+        editTimestamp = now
+    }
     let entry = ArchivedMessageEdit(
         peerId: id.peerId.toInt64(),
         namespace: id.namespace,
         id: id.id,
         previousText: previousMessage.text,
         newText: newText,
-        editTimestamp: previousMessage.timestamp,
+        editTimestamp: editTimestamp,
         archivedTimestamp: now
     )
-    EnhancedFeaturesArchive.shared(basePath: mediaBox.basePath).appendEditedMessages([entry])
+    archive.appendEditedMessages([entry])
 }
 
 private func enhancedFeaturesMediaSummary(for media: [Media]) -> String? {
