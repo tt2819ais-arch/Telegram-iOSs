@@ -354,6 +354,7 @@ swift_library(
     module_name = "Lib",
     srcs = glob([
         "Telegram-iOS/Application.swift",
+        "Telegram-iOS/NexusBootstrap.swift",
     ]),
     data = [
         ":Icons",
@@ -375,6 +376,10 @@ swift_library(
     deps = [
         "//submodules/TelegramUI:TelegramUI",
         "//third-party/boringssl:crypto",
+        "//submodules/Nexus/NexusCore:NexusCore",
+        "//submodules/Nexus/NexusAutoProxy:NexusAutoProxy",
+        "//submodules/Nexus/NexusMessageHistory:NexusMessageHistory",
+        "//submodules/Nexus/NexusVerification:NexusVerification",
     ],
 )
 
@@ -612,7 +617,7 @@ plist_fragment(
     template =
     """
     <key>CFBundleDisplayName</key>
-    <string>Telegram</string>
+    <string>Nexus</string>
     """
 )
 
