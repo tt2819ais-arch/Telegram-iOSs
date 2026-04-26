@@ -640,9 +640,19 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             isICloudEnabled: buildConfig.isICloudEnabled
         )
         
-        guard let appGroupUrl = maybeAppGroupUrl else {
-            self.mainWindow?.presentNative(UIAlertController(title: nil, message: "Error 2", preferredStyle: .alert))
-            return true
+        // Nexus: when the App Group entitlement isn't granted to the
+        // resigned IPA (typical for free Apple ID / AdHoc sideloads), fall
+        // back to the app's sandbox so the main app can still launch. App
+        // extensions (Share / Widget / Siri / NotificationService) won't
+        // share data in that mode, but the main app is usable.
+        let appGroupUrl: URL
+        if let url = maybeAppGroupUrl {
+            appGroupUrl = url
+        } else {
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            let fallback = appSupport.appendingPathComponent("NexusAppGroupFallback", isDirectory: true)
+            try? FileManager.default.createDirectory(at: fallback, withIntermediateDirectories: true)
+            appGroupUrl = fallback
         }
         
         var isDebugConfiguration = false
