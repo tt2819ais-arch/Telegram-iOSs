@@ -59,7 +59,7 @@ public final class NexusVerificationStore: @unchecked Sendable {
 
     public func cancelObserver(_ token: UUID) {
         self.queue.sync {
-            self.listeners.removeValue(forKey: token)
+            _ = self.listeners.removeValue(forKey: token)
         }
     }
 }
