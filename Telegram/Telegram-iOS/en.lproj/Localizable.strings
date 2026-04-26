@@ -401,7 +401,7 @@
 "Date.ChatDateHeaderYear" = "%1$@ %2$@, %3$@";
 
 // Tour
-"Tour.Title1" = "Telegram";
+"Tour.Title1" = "Nexus";
 "Tour.Text1" = "The world's **fastest** messaging app.\nIt is **free** and **secure**.";
 
 "Tour.Title2" = "Fast";
@@ -448,7 +448,7 @@
 "Login.PhoneBannedEmailSubject" = "Banned phone number: %@";
 "Login.PhoneBannedEmailBody" = "I'm trying to use my mobile phone number: %1$@\nBut Telegram says it's banned. Please help.\n\nApp version: %2$@\nOS version: %3$@\nLocale: %4$@\nMNC: %5$@";
 
-"Login.PhoneGenericEmailSubject" = "Telegram iOS error: %@";
+"Login.PhoneGenericEmailSubject" = "Nexus iOS error: %@";
 "Login.PhoneGenericEmailBody" = "I'm trying to use my mobile phone number: %1$@\nBut Telegram shows an error. Please help.\n\nError: %2$@\nApp version: %3$@\nOS version: %4$@\nLocale: %5$@\nMNC: %6$@";
 
 "Login.PhonePaidEmailSubject" = "Payment Issue";
@@ -1772,7 +1772,7 @@
 
 "Group.Management.AddModeratorHelp" = "You can add admins to help you manage your group.";
 
-"Watch.AppName" = "Telegram";
+"Watch.AppName" = "Nexus";
 "Watch.Compose.AddContact" = "Choose Contact";
 "Watch.Compose.CreateMessage" = "Create Message";
 "Watch.Compose.CurrentLocation" = "Current Location";
@@ -2260,7 +2260,7 @@ Unused sets are archived when you add more.";
 
 "Widget.AuthRequired" = "Log in to Telegram";
 "Widget.NoUsers" = "Start messaging to see your friends here";
-"Widget.GalleryTitle" = "Telegram";
+"Widget.GalleryTitle" = "Nexus";
 "Widget.GalleryDescription" = "Select chats";
 
 "ShareMenu.CopyShareLinkGame" = "Copy link to game";
@@ -2289,7 +2289,7 @@ Unused sets are archived when you add more.";
 
 "Call.EncryptionKey.Title" = "Encryption Key";
 
-"Application.Name" = "Telegram";
+"Application.Name" = "Nexus";
 "DialogList.Pin" = "Pin";
 "DialogList.Unpin" = "Unpin";
 "DialogList.PinLimitError" = "Sorry, you can pin no more than %@ chats to the top.";
@@ -16168,3 +16168,31 @@ Error: %8$@";
 "PeerInfo.UnofficialSecurityRisk" = "%@ uses an unofficial Telegram client – messages to this user may be less secure.";
 
 "Gallery.Live" = "LIVE";
+
+// Nexus
+"Nexus.About.Title" = "About Nexus";
+"Nexus.About.Subtitle" = "Nexus — unofficial client based on Telegram API";
+"Nexus.About.Disclaimer" = "Nexus is an unofficial third-party client built on the open-source Telegram-iOS codebase. It is not affiliated with, endorsed by, or sponsored by Telegram Messenger Inc.";
+"Nexus.About.Version" = "Version %@";
+"Nexus.Settings.Section" = "Nexus";
+"Nexus.Settings.AutoProxy" = "Connection without VPN";
+"Nexus.Settings.AutoProxy.Description" = "Automatically download and select the fastest MTProto proxy on launch.";
+"Nexus.Settings.AutoProxy.RefreshList" = "Refresh proxy list";
+"Nexus.Settings.AutoProxy.ConnectBest" = "Connect to fastest";
+"Nexus.Settings.AutoProxy.LastUpdated" = "Last updated: %@";
+"Nexus.Settings.AutoProxy.NotUpdated" = "Never updated";
+"Nexus.Settings.AutoProxy.Connected" = "Connected via %@";
+"Nexus.Settings.AutoProxy.Disconnected" = "Not connected";
+"Nexus.Settings.MessageHistory" = "Saved deleted messages";
+"Nexus.Settings.MessageHistory.Description" = "Keep a local copy of messages that get deleted or edited in your chats. Visible only to you.";
+"Nexus.Settings.MessageHistory.Empty" = "No saved messages yet.";
+"Nexus.Message.Deleted" = "deleted";
+"Nexus.Message.Edited" = "edited";
+"Nexus.Message.ShowOriginal" = "Show original";
+"Nexus.Message.EditHistory" = "Edit history";
+"Nexus.Verification.FakeBadge.Tooltip" = "Verified in Nexus";
+"Nexus.Admin.Title" = "Nexus Admin";
+"Nexus.Admin.SearchUser" = "Search by @username or user ID";
+"Nexus.Admin.ToggleVerification" = "Toggle verification";
+"Nexus.Admin.VerifiedList" = "Users with verification";
+"Nexus.Admin.AccessDenied" = "Access denied.";
